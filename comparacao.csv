@@ -1,0 +1,7 @@
+Tipo,N,M,Total_Elementos,Tempo_Segundos
+Serial,10,20,200,0.00032
+Serial,100,200,20000,0.14772
+Serial,1000,2000,2000000,190.20095
+Paralelo,10,20,200,0.19000
+Paralelo,100,200,20000,0.24000
+Paralelo,1000,2000,2000000,60.53000
