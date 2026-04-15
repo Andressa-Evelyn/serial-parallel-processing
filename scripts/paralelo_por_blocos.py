@@ -69,8 +69,8 @@ def multiplicar_por_blocos(
 if __name__ == "__main__":
     from serial import gerar_matriz
 
-    N = 100
-    M = 200
+    N = 1000
+    M = 2000
     P = 100
     PROCESSOS = 4
     TAMANHO_BLOCO = 20

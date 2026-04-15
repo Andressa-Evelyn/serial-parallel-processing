@@ -59,8 +59,8 @@ def executar_experimento_serial(n: int, m: int, p: int, seed_a: int = 42, seed_b
 
 
 if __name__ == "__main__":
-    N = 100
-    M = 200
+    N = 1000
+    M = 2000
     P = 100
 
     dados = executar_experimento_serial(N, M, P)

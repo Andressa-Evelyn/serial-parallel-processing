@@ -56,8 +56,8 @@ def multiplicar_sem_agrupamento(A: Matrix, B: Matrix, num_processos: int | None 
 if __name__ == "__main__":
     from serial import gerar_matriz
 
-    N = 30
-    M = 60
+    N = 300
+    M = 600
     P = 30
     PROCESSOS = 4
 

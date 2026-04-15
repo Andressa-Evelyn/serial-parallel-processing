@@ -1,250 +1,110 @@
-from __future__ import annotations
-
 import csv
 import math
-import multiprocessing as mp
+import os
+import sys
 import time
 from pathlib import Path
-from typing import Callable, Optional
 
-from paralelo_por_blocos import multiplicar_por_blocos
-from paralelo_por_linha import multiplicar_por_linha
-from paralelo_sem_agrupamento import multiplicar_sem_agrupamento
+BASE_DIR = Path(__file__).resolve().parents[1]
+sys.path.append(str(Path(__file__).resolve().parent))
+
 from serial import gerar_matriz, multiplicar_matrizes_serial
+from paralelo_sem_agrupamento import multiplicar_paralelo_sem_agrupamento
+from paralelo_por_linha import multiplicar_paralelo_por_linha
+from paralelo_por_blocos import multiplicar_paralelo_por_blocos
 
-BASE_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = BASE_DIR / "comparacao_serial_paralelo"
-OUTPUT_DIR.mkdir(exist_ok=True)
+PROCESSOS = 4
 
-# Preset seguro para gerar resultados em tempo razoável.
-# Se quiser, troque pelos tamanhos do seu trabalho.
-EXPERIMENTOS = [
-    (10, 20, 10),
-    (60, 120, 60),
+# Ajuste aqui os tamanhos que deseja testar
+TAMANHOS = [
     (120, 240, 120),
+    (180, 360, 180),
+    (240, 480, 240),
+    (300, 600, 300),
 ]
 
-NUM_PROCESSOS = max(2, min(4, mp.cpu_count()))
-TAMANHO_BLOCO = 20
-REPETICOES = 1
-SEED_A = 42
-SEED_B = 99
+SAIDA_GERAL = BASE_DIR / "comparacao_serial_paralelo" / "comparacao_geral_maior.csv"
+SAIDA_RESUMIDA = BASE_DIR / "comparacao_serial_paralelo" / "comparacao_resumida_maior.csv"
 
-# Evita explodir o número de tarefas no modo "sem agrupamento".
-MAX_TAREFAS_SEM_AGRUPAMENTO = 40_000
-
-
-def medir_tempo(func: Callable, *args, **kwargs):
+def medir_tempo(func, *args):
     inicio = time.perf_counter()
-    resultado = func(*args, **kwargs)
+    resultado = func(*args)
     fim = time.perf_counter()
     return resultado, fim - inicio
 
-
-def matrizes_iguais(A, B) -> bool:
-    if len(A) != len(B):
-        return False
-    return all(linha_a == linha_b for linha_a, linha_b in zip(A, B))
-
-
-def media(valores: list[float]) -> float:
-    return sum(valores) / len(valores) if valores else math.nan
-
-
-def formatar_numero(valor: Optional[float]) -> str:
-    if valor is None or (isinstance(valor, float) and math.isnan(valor)):
-        return "N/A"
-    return f"{valor:.6f}"
-
-
-def executar_metodo_repetido(func: Callable, *args, repeticoes: int = 1, **kwargs):
-    tempos = []
-    ultimo_resultado = None
-    for _ in range(repeticoes):
-        ultimo_resultado, tempo = medir_tempo(func, *args, **kwargs)
-        tempos.append(tempo)
-    return ultimo_resultado, media(tempos)
-
+def quase_igual_matriz(A, B):
+    return A == B
 
 def main():
-    linhas_csv = []
-    linhas_txt = []
+    os.makedirs(SAIDA_GERAL.parent, exist_ok=True)
+    linhas_geral = []
+    linhas_resumo = []
 
-    for n, m, p in EXPERIMENTOS:
-        A = gerar_matriz(n, m, seed=SEED_A)
-        B = gerar_matriz(m, p, seed=SEED_B)
+    for idx, (n, m, p) in enumerate(TAMANHOS, start=1):
+        print(f"Teste {idx}: {n}x{m} * {m}x{p}")
+        seed_a = 100 + idx
+        seed_b = 200 + idx
 
-        resultado_serial, tempo_serial = executar_metodo_repetido(
-            multiplicar_matrizes_serial,
-            A,
-            B,
-            repeticoes=REPETICOES,
-        )
+        A = gerar_matriz(n, m, seed=seed_a)
+        B = gerar_matriz(m, p, seed=seed_b)
 
-        linhas_resultado = [
-            {
-                "metodo": "Serial",
-                "n": n,
-                "m": m,
-                "p": p,
-                "tempo_segundos": tempo_serial,
-                "speedup": 1.0,
-                "eficiencia": 1.0,
-                "processos": 1,
-                "valido": True,
-                "observacao": "Baseline sequencial",
-            }
+        resultado_serial, tempo_serial = medir_tempo(multiplicar_matrizes_serial, A, B)
+
+        metodos = [
+            ("Serial", tempo_serial, True, 1),
         ]
 
-        total_tarefas_finas = n * p
-        if total_tarefas_finas <= MAX_TAREFAS_SEM_AGRUPAMENTO:
-            resultado_sem, tempo_sem = executar_metodo_repetido(
-                multiplicar_sem_agrupamento,
-                A,
-                B,
-                NUM_PROCESSOS,
-                repeticoes=REPETICOES,
-            )
-            valido_sem = matrizes_iguais(resultado_serial, resultado_sem)
-            speedup_sem = tempo_serial / tempo_sem if tempo_sem > 0 else math.nan
-            eficiencia_sem = speedup_sem / NUM_PROCESSOS if NUM_PROCESSOS > 0 else math.nan
-            linhas_resultado.append(
-                {
-                    "metodo": "Paralelo sem agrupamento",
-                    "n": n,
-                    "m": m,
-                    "p": p,
-                    "tempo_segundos": tempo_sem,
-                    "speedup": speedup_sem,
-                    "eficiencia": eficiencia_sem,
-                    "processos": NUM_PROCESSOS,
-                    "valido": valido_sem,
-                    "observacao": f"Uma tarefa por célula ({total_tarefas_finas} tarefas)",
-                }
-            )
-        else:
-            linhas_resultado.append(
-                {
-                    "metodo": "Paralelo sem agrupamento",
-                    "n": n,
-                    "m": m,
-                    "p": p,
-                    "tempo_segundos": math.nan,
-                    "speedup": math.nan,
-                    "eficiencia": math.nan,
-                    "processos": NUM_PROCESSOS,
-                    "valido": False,
-                    "observacao": f"Ignorado: {total_tarefas_finas} tarefas > limite de {MAX_TAREFAS_SEM_AGRUPAMENTO}",
-                }
-            )
+        for nome, func in [
+            ("Sem agrupamento", multiplicar_paralelo_sem_agrupamento),
+            ("Por linha", multiplicar_paralelo_por_linha),
+            ("Por blocos", multiplicar_paralelo_por_blocos),
+        ]:
+            try:
+                resultado_paralelo, tempo = medir_tempo(func, A, B, PROCESSOS)
+                validado = quase_igual_matriz(resultado_serial, resultado_paralelo)
+            except Exception as exc:
+                tempo = math.nan
+                validado = False
+                print(f"Erro em {nome}: {exc}")
+            metodos.append((nome, tempo, validado, PROCESSOS))
 
-        resultado_linha, tempo_linha = executar_metodo_repetido(
-            multiplicar_por_linha,
-            A,
-            B,
-            NUM_PROCESSOS,
-            repeticoes=REPETICOES,
-        )
-        valido_linha = matrizes_iguais(resultado_serial, resultado_linha)
-        speedup_linha = tempo_serial / tempo_linha if tempo_linha > 0 else math.nan
-        eficiencia_linha = speedup_linha / NUM_PROCESSOS if NUM_PROCESSOS > 0 else math.nan
-        linhas_resultado.append(
-            {
-                "metodo": "Paralelo por linha",
+        for metodo, tempo, validado, processos in metodos:
+            speedup = 1.0 if metodo == "Serial" else (tempo_serial / tempo if tempo and not math.isnan(tempo) else math.nan)
+            eficiencia = 1.0 if metodo == "Serial" else (speedup / processos if speedup and not math.isnan(speedup) else math.nan)
+            linhas_geral.append({
                 "n": n,
                 "m": m,
                 "p": p,
-                "tempo_segundos": tempo_linha,
-                "speedup": speedup_linha,
-                "eficiencia": eficiencia_linha,
-                "processos": NUM_PROCESSOS,
-                "valido": valido_linha,
-                "observacao": f"Uma tarefa por linha ({n} tarefas)",
-            }
-        )
+                "tamanho": f"{n} x {m} x {p}",
+                "metodo": metodo,
+                "tempo_segundos": round(tempo, 6) if not math.isnan(tempo) else "",
+                "speedup": round(speedup, 6) if not math.isnan(speedup) else "",
+                "eficiencia": round(eficiencia, 6) if not math.isnan(eficiencia) else "",
+                "processos": processos,
+                "validado_com_serial": validado,
+            })
 
-        resultado_blocos, tempo_blocos = executar_metodo_repetido(
-            multiplicar_por_blocos,
-            A,
-            B,
-            NUM_PROCESSOS,
-            TAMANHO_BLOCO,
-            repeticoes=REPETICOES,
-        )
-        valido_blocos = matrizes_iguais(resultado_serial, resultado_blocos)
-        speedup_blocos = tempo_serial / tempo_blocos if tempo_blocos > 0 else math.nan
-        eficiencia_blocos = speedup_blocos / NUM_PROCESSOS if NUM_PROCESSOS > 0 else math.nan
-        linhas_resultado.append(
-            {
-                "metodo": "Paralelo por blocos",
-                "n": n,
-                "m": m,
-                "p": p,
-                "tempo_segundos": tempo_blocos,
-                "speedup": speedup_blocos,
-                "eficiencia": eficiencia_blocos,
-                "processos": NUM_PROCESSOS,
-                "valido": valido_blocos,
-                "observacao": f"Blocos de {TAMANHO_BLOCO} linhas",
-            }
-        )
+        resumo = {"n": n, "m": m, "p": p, "tamanho": f"{n} x {m} x {p}"}
+        for metodo, tempo, validado, processos in metodos:
+            chave = metodo.lower().replace(" ", "_")
+            resumo[f"tempo_{chave}"] = round(tempo, 6) if not math.isnan(tempo) else ""
+            if metodo != "Serial":
+                speedup = tempo_serial / tempo if tempo and not math.isnan(tempo) else math.nan
+                resumo[f"speedup_{chave}"] = round(speedup, 6) if not math.isnan(speedup) else ""
+        linhas_resumo.append(resumo)
 
-        linhas_csv.extend(linhas_resultado)
-
-        linhas_txt.append(f"Experimento A={n}x{m}, B={m}x{p}")
-        linhas_txt.append("-" * 72)
-        for linha in linhas_resultado:
-            linhas_txt.append(
-                f"{linha['metodo']:<28} | tempo={formatar_numero(linha['tempo_segundos'])} s | "
-                f"speedup={formatar_numero(linha['speedup'])} | "
-                f"eficiência={formatar_numero(linha['eficiencia'])} | "
-                f"válido={linha['valido']} | {linha['observacao']}"
-            )
-        linhas_txt.append("")
-
-    csv_path = OUTPUT_DIR / "comparacao_geral.csv"
-    with csv_path.open("w", newline="", encoding="utf-8") as arquivo_csv:
-        writer = csv.DictWriter(
-            arquivo_csv,
-            fieldnames=[
-                "metodo",
-                "n",
-                "m",
-                "p",
-                "tempo_segundos",
-                "speedup",
-                "eficiencia",
-                "processos",
-                "valido",
-                "observacao",
-            ],
-        )
+    with open(SAIDA_GERAL, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(linhas_geral[0].keys()))
         writer.writeheader()
-        writer.writerows(linhas_csv)
+        writer.writerows(linhas_geral)
 
-    txt_path = OUTPUT_DIR / "comparacao_geral.txt"
-    txt_path.write_text("\n".join(linhas_txt), encoding="utf-8")
+    with open(SAIDA_RESUMIDA, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(linhas_resumo[0].keys()))
+        writer.writeheader()
+        writer.writerows(linhas_resumo)
 
-    resumo_path = OUTPUT_DIR / "resumo_tabela.md"
-    tabela_md = [
-        "| Método | N | M | P | Tempo (s) | Speedup | Eficiência | Processos | Válido |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|:---:|",
-    ]
-    for linha in linhas_csv:
-        tabela_md.append(
-            f"| {linha['metodo']} | {linha['n']} | {linha['m']} | {linha['p']} | "
-            f"{formatar_numero(linha['tempo_segundos'])} | {formatar_numero(linha['speedup'])} | "
-            f"{formatar_numero(linha['eficiencia'])} | {linha['processos']} | {linha['valido']} |"
-        )
-    resumo_path.write_text("\n".join(tabela_md), encoding="utf-8")
-
-    print(f"Arquivos gerados em: {OUTPUT_DIR}")
-    print(f"- CSV: {csv_path.name}")
-    print(f"- TXT: {txt_path.name}")
-    print(f"- Tabela Markdown: {resumo_path.name}")
-    print(f"- Processos usados: {NUM_PROCESSOS}")
-
+    print(f"Arquivo gerado: {SAIDA_GERAL}")
+    print(f"Arquivo gerado: {SAIDA_RESUMIDA}")
 
 if __name__ == "__main__":
-    mp.freeze_support()
     main()

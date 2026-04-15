@@ -56,8 +56,8 @@ def multiplicar_por_linha(A: Matrix, B: Matrix, num_processos: int | None = None
 if __name__ == "__main__":
     from serial import gerar_matriz
 
-    N = 100
-    M = 200
+    N = 1000
+    M = 2000
     P = 100
     PROCESSOS = 4
 
