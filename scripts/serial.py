@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+import csv
 import random
 import time
+from pathlib import Path
 from typing import List, Optional
 
 Matrix = List[List[int]]
 
+BASE_DIR = Path(__file__).resolve().parents[1]
+ARQUIVO_BASE = BASE_DIR / "comparacao_serial_paralelo" / "comparacao_serial_e_paralelo.csv"
+ARQUIVO_SAIDA = BASE_DIR / "comparacao_serial_paralelo" / "comparacao_serial.csv"
+
 
 def gerar_matriz(linhas: int, colunas: int, seed: Optional[int] = None) -> Matrix:
-    """Gera uma matriz preenchida com inteiros aleatórios."""
     rng = random.Random(seed)
     return [[rng.randint(1, 10) for _ in range(colunas)] for _ in range(linhas)]
 
 
 def multiplicar_matrizes_serial(A: Matrix, B: Matrix) -> Matrix:
-    """Multiplica duas matrizes de forma sequencial."""
     if not A or not B:
         raise ValueError("As matrizes não podem ser vazias.")
 
@@ -41,28 +45,41 @@ def multiplicar_matrizes_serial(A: Matrix, B: Matrix) -> Matrix:
     return resultado
 
 
-def executar_experimento_serial(n: int, m: int, p: int, seed_a: int = 42, seed_b: int = 99):
-    """Gera as matrizes, executa o algoritmo serial e retorna resultado + tempo."""
-    A = gerar_matriz(n, m, seed=seed_a)
-    B = gerar_matriz(m, p, seed=seed_b)
+def main():
+    linhas_saida = []
 
-    inicio = time.perf_counter()
-    C = multiplicar_matrizes_serial(A, B)
-    fim = time.perf_counter()
+    with open(ARQUIVO_BASE, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
 
-    return {
-        "matriz_a": A,
-        "matriz_b": B,
-        "resultado": C,
-        "tempo": fim - inicio,
-    }
+        for idx, row in enumerate(reader, start=1):
+            n = int(row["n"])
+            m = int(row["m"])
+            p = n
+
+            print(f"[SERIAL] Teste {idx}: A={n}x{m}, B={m}x{p}")
+
+            A = gerar_matriz(n, m, seed=100 + idx)
+            B = gerar_matriz(m, p, seed=200 + idx)
+
+            inicio = time.perf_counter()
+            multiplicar_matrizes_serial(A, B)
+            fim = time.perf_counter()
+
+            tempo = fim - inicio
+
+            linhas_saida.append({
+                "n": n,
+                "m": m,
+                "tempo_execucao": round(tempo, 6),
+            })
+
+    with open(ARQUIVO_SAIDA, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["n", "m", "tempo_execucao"])
+        writer.writeheader()
+        writer.writerows(linhas_saida)
+
+    print(f"Arquivo gerado: {ARQUIVO_SAIDA}")
 
 
 if __name__ == "__main__":
-    N = 1000
-    M = 2000
-    P = 100
-
-    dados = executar_experimento_serial(N, M, P)
-    print(f"Dimensões: A={N}x{M}, B={M}x{P}")
-    print(f"Tempo serial: {dados['tempo']:.6f} s")
+    main()

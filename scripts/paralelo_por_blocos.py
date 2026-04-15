@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import csv
 import multiprocessing as mp
+import random
 import time
-from typing import List, Sequence, Tuple
+from pathlib import Path
+from typing import List, Sequence, Tuple, Optional
 
 Matrix = List[List[int]]
 
-_B_GLOBAL: Matrix | None = None
+BASE_DIR = Path(__file__).resolve().parents[1]
+ARQUIVO_BASE = BASE_DIR / "comparacao_serial_paralelo" / "comparacao_serial_e_paralelo.csv"
+ARQUIVO_SAIDA = BASE_DIR / "comparacao_serial_paralelo" / "comparacao_paralelo.csv"
+
+_B_GLOBAL: Optional[Matrix] = None
+
+
+def gerar_matriz(linhas: int, colunas: int, seed: Optional[int] = None) -> Matrix:
+    rng = random.Random(seed)
+    return [[rng.randint(1, 10) for _ in range(colunas)] for _ in range(linhas)]
 
 
 def _init_pool(B: Matrix):
@@ -40,7 +52,6 @@ def multiplicar_por_blocos(
     num_processos: int | None = None,
     tamanho_bloco: int = 10,
 ) -> Matrix:
-    """Versão paralela com aglomeração em blocos de linhas."""
     if not A or not B:
         raise ValueError("As matrizes não podem ser vazias.")
 
@@ -66,22 +77,43 @@ def multiplicar_por_blocos(
     return resultado
 
 
+def main():
+    linhas_saida = []
+    processos = 4
+    tamanho_bloco = 10
+
+    with open(ARQUIVO_BASE, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        for idx, row in enumerate(reader, start=1):
+            n = int(row["n"])
+            m = int(row["m"])
+            p = n
+
+            print(f"[PARALELO] Teste {idx}: A={n}x{m}, B={m}x{p}")
+
+            A = gerar_matriz(n, m, seed=100 + idx)
+            B = gerar_matriz(m, p, seed=200 + idx)
+
+            inicio = time.perf_counter()
+            multiplicar_por_blocos(A, B, num_processos=processos, tamanho_bloco=tamanho_bloco)
+            fim = time.perf_counter()
+
+            tempo = fim - inicio
+
+            linhas_saida.append({
+                "n": n,
+                "m": m,
+                "tempo_execucao": round(tempo, 6),
+            })
+
+    with open(ARQUIVO_SAIDA, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["n", "m", "tempo_execucao"])
+        writer.writeheader()
+        writer.writerows(linhas_saida)
+
+    print(f"Arquivo gerado: {ARQUIVO_SAIDA}")
+
+
 if __name__ == "__main__":
-    from serial import gerar_matriz
-
-    N = 1000
-    M = 2000
-    P = 100
-    PROCESSOS = 4
-    TAMANHO_BLOCO = 20
-
-    A = gerar_matriz(N, M, seed=42)
-    B = gerar_matriz(M, P, seed=99)
-
-    inicio = time.perf_counter()
-    C = multiplicar_por_blocos(A, B, PROCESSOS, TAMANHO_BLOCO)
-    fim = time.perf_counter()
-
-    print(f"Dimensões: A={N}x{M}, B={M}x{P}")
-    print(f"Tempo paralelo por blocos: {fim - inicio:.6f} s")
-    print(f"Elemento [0][0]: {C[0][0]}")
+    main()
