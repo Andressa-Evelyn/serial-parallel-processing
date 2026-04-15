@@ -1,0 +1,20 @@
+Experimento A=10x20, B=20x10
+------------------------------------------------------------------------
+Serial                       | tempo=0.000204 s | speedup=1.000000 | eficiência=1.000000 | válido=True | Baseline sequencial
+Paralelo sem agrupamento     | tempo=0.243951 s | speedup=0.000838 | eficiência=0.000209 | válido=True | Uma tarefa por célula (100 tarefas)
+Paralelo por linha           | tempo=0.210412 s | speedup=0.000971 | eficiência=0.000243 | válido=True | Uma tarefa por linha (10 tarefas)
+Paralelo por blocos          | tempo=0.214763 s | speedup=0.000952 | eficiência=0.000238 | válido=True | Blocos de 20 linhas
+
+Experimento A=60x120, B=120x60
+------------------------------------------------------------------------
+Serial                       | tempo=0.050253 s | speedup=1.000000 | eficiência=1.000000 | válido=True | Baseline sequencial
+Paralelo sem agrupamento     | tempo=0.276610 s | speedup=0.181673 | eficiência=0.045418 | válido=True | Uma tarefa por célula (3600 tarefas)
+Paralelo por linha           | tempo=0.301789 s | speedup=0.166515 | eficiência=0.041629 | válido=True | Uma tarefa por linha (60 tarefas)
+Paralelo por blocos          | tempo=0.229900 s | speedup=0.218584 | eficiência=0.054646 | válido=True | Blocos de 20 linhas
+
+Experimento A=120x240, B=240x120
+------------------------------------------------------------------------
+Serial                       | tempo=0.268687 s | speedup=1.000000 | eficiência=1.000000 | válido=True | Baseline sequencial
+Paralelo sem agrupamento     | tempo=0.486681 s | speedup=0.552080 | eficiência=0.138020 | válido=True | Uma tarefa por célula (14400 tarefas)
+Paralelo por linha           | tempo=0.485644 s | speedup=0.553260 | eficiência=0.138315 | válido=True | Uma tarefa por linha (120 tarefas)
+Paralelo por blocos          | tempo=0.334894 s | speedup=0.802305 | eficiência=0.200576 | válido=True | Blocos de 20 linhas
